@@ -1,0 +1,11 @@
+[package]
+name = "samuzen/profileservice"
+description = "Fork of ProfileService by MadStudioRoblox. https://github.com/MadStudioRoblox/ProfileService. All credits to MadStudioRoblox. No modifications were made to ProfileService"
+version = "1.0.2"
+license = "Apache 2.0"
+authors = ["MadStudioRoblox"]
+realm = "shared"
+registry = "https://github.com/UpliftGames/wally-index"
+exclude = []
+
+[dependencies]

@@ -2,7 +2,7 @@
 local Players = game:GetService("Players")
 
 -- ### Packages
-local Packages = script.Packages
+local Packages = script.Parent.Parent.Packages
 local Signal = require(Packages.signal)
 local TableUtil = require(Packages["table-util"])
 local Promise = require(Packages.promise)
@@ -13,7 +13,11 @@ local ProfileStore
 local Profiles = {}
 local onDataChanged = Signal.new()
 
---
+--[=[
+	@class ProfileService
+	Main Class.
+]=]
+
 local ProfileReplication = {}
 ProfileReplication.__index = ProfileReplication
 
@@ -22,13 +26,33 @@ ProfileReplication.Signals = {
 	beforePlayerRemoving = Signal.new(),
 }
 
+--[=[
+	@within ProfileService
+	Initialize the system
+
+	@param databaseName string -- The name of the database
+	@param profileTemplate table -- The data template
+]=]
+
 function ProfileReplication:init(databaseName: string, profileTemplate: table)
     ProfileStore = ProfileService.GetProfileStore(
         databaseName,
         profileTemplate
     )
+end
 
-    Players.PlayerAdded:Connect(function(player)
+--[=[
+	@within ProfileService
+	Start the system, load player profiles, register player added and data changed
+]=]
+function ProfileReplication:start()
+	for _, player in Players:GetPlayers() do
+		task.spawn(function()
+			self:_loadPlayerProfile(player)
+		end)
+	end
+
+	Players.PlayerAdded:Connect(function(player)
         self:_loadPlayerProfile(player)
     end)
 
@@ -40,7 +64,7 @@ function ProfileReplication:init(databaseName: string, profileTemplate: table)
 		end
     end)
 
-    onDataChanged:Connect(function(_player, _path, _state, _key)
+	onDataChanged:Connect(function(_player, _path, _state, _key)
         --print(_player, _path, _state, _key)
         if _state then
             ProfileReplication:_createOrUpdateOnReplicatedFolder(_player, _path)
@@ -48,14 +72,6 @@ function ProfileReplication:init(databaseName: string, profileTemplate: table)
             ProfileReplication:_deleteOnReplicatedFolder(_player, _path, _key)
         end
     end)
-end
-
-function ProfileReplication:start()
-	for _, player in Players:GetPlayers() do
-		task.spawn(function()
-			self:_loadPlayerProfile(player)
-		end)
-	end
 end
 
 -- ### API
@@ -365,8 +381,5 @@ function ProfileReplication:_deleteOnReplicatedFolder(_player, _path, key)
 	end
 
 end
-
---ProfileReplication:init()
---ProfileReplication:start()
 
 return ProfileReplication

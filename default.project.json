@@ -1,0 +1,9 @@
+{
+  "name": "ProfileReplication",
+  "tree": {
+    "$path": "src/ProfileReplication.lua",
+    "Packages": {
+      "$path": "Packages"
+    }
+  }
+}

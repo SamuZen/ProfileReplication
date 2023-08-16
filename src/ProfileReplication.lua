@@ -2,7 +2,7 @@
 local Players = game:GetService("Players")
 
 -- ### Packages
-local Packages = script.Parent.Parent.Packages
+local Packages = script.Packages
 local Signal = require(Packages.signal)
 local TableUtil = require(Packages["table-util"])
 local Promise = require(Packages.promise)
@@ -21,6 +21,17 @@ local onDataChanged = Signal.new()
 local ProfileReplication = {}
 ProfileReplication.__index = ProfileReplication
 
+--- @interface Signals
+--- @within ProfileService
+--- .playerProfileLoaded Signal -- fires when a player profile is loaded
+--- .beforePlayerRemoving Signal -- fires before a player profile is being released
+---
+
+--[=[
+	@within ProfileService
+	@prop Signals Signals
+	
+]=]
 ProfileReplication.Signals = {
 	playerProfileLoaded = Signal.new(),
 	beforePlayerRemoving = Signal.new(),
@@ -33,7 +44,6 @@ ProfileReplication.Signals = {
 	@param databaseName string -- The name of the database
 	@param profileTemplate table -- The data template
 ]=]
-
 function ProfileReplication:init(databaseName: string, profileTemplate: table)
     ProfileStore = ProfileService.GetProfileStore(
         databaseName,
@@ -76,91 +86,143 @@ end
 
 -- ### API
 
-function ProfileReplication:ChangeValueOnProfile(_player: Player, _path, _newValue)
+--[=[
+	@within ProfileService
+	Set value on path.
+	Cannot set tables directly
+
+	@param player Player -- Target player
+	@param path string -- path to the data
+	@param newValue string | number | boolean -- value to set
+]=]
+function ProfileReplication:Set(player: Player, path, newValue)
+	assert(typeof(newValue) ~= "table", "Cannot 'Set' a value with table.")
 	local function ChangeValue(parent, key, value)
+		if typeof(parent[key]) == "table" then
+			warn(parent, key, value)
+			error("Cannot use 'Set' on a table path.")
+		end
+
 		parent[key] = value
 	end
 	
-	if Profiles[_player] then
-		ProfileReplication:_recursiveAction(Profiles[_player].Data, _path, _newValue, ChangeValue)
-		onDataChanged:Fire(_player, _path, true)
-		return Profiles[_player].Data
+	if Profiles[player] then
+		ProfileReplication:_recursiveAction(Profiles[player].Data, path, newValue, ChangeValue)
+		onDataChanged:Fire(player, path, true)
+		return Profiles[player].Data
 	else
-		warn("Failed to change value on " .. _player.DisplayName .. " there is no profile loaded")
+		warn("Failed to change value on " .. player.DisplayName .. " there is no profile loaded")
 	end
-
 end
 
-function ProfileReplication:AppendTableToProfileInPath(_player, _path, _value, _key)
-	assert(_player ~= nil, "To create a replicated folder, the argument needs to be a player, got nil")
-	assert(typeof(_player) == "Instance", "To create a replicated folder, the argument needs to be a player Instance")
-	assert(_player:IsA("Player") , "Argument instance needs to be a 'Player'")
-	assert(Profiles[_player], "No profile found with passed player" )
+--[=[
+	@within ProfileService
+	Set value on path
 
-	local function AddTable(parent, key, value)
-		assert(type(parent[key]) == "table", "The final of the path value needs to be a table. Got a " .. type(parent[key]) )
-		table.insert(parent[key], value)
+	@param player Player -- Target player
+	@param path string -- path to the data
+	@param value table -- table to append
+	@param key string -- optional key to insert the table
+]=]
+function ProfileReplication:AddTable(player, path, value, key)
+	assert(player ~= nil, "To create a replicated folder, the argument needs to be a player, got nil")
+	assert(typeof(player) == "Instance", "To create a replicated folder, the argument needs to be a player Instance")
+	assert(player:IsA("Player") , "Argument instance needs to be a 'Player'")
+	assert(Profiles[player], "No profile found with passed player" )
+
+	local function AddTable(parent, _key, value)
+		assert(type(parent[_key]) == "table", "The final of the path value needs to be a table. Got a " .. type(parent[_key]) )
+		table.insert(parent[_key], value)
 	end
 
-	local function AddTableWithKey(parent, key, value)
-		assert(type(parent[key]) == "table", "The final of the path value needs to be a table. Got a " .. type(parent[key]) )
-		parent[key][_key] = value
+	local function AddTableWithKey(parent, _key, value)
+		assert(type(parent[_key]) == "table", "The final of the path value needs to be a table. Got a " .. type(parent[_key]) )
+		parent[_key][key] = value
 	end
 
-	if _key ~= nil then
-		assert(type(_key) == "string", "Table key needs to be a string, got " .. type(_key))
+	if key ~= nil then
+		assert(type(key) == "string", "Table key needs to be a string, got " .. type(key))
 
-		ProfileReplication:_recursiveAction(Profiles[_player].Data, _path, _value, AddTableWithKey)
+		ProfileReplication:_recursiveAction(Profiles[player].Data, path, value, AddTableWithKey)
 	else
-		ProfileReplication:_recursiveAction(Profiles[_player].Data, _path, _value, AddTable)
+		ProfileReplication:_recursiveAction(Profiles[player].Data, path, value, AddTable)
 
 	end
 
-	onDataChanged:Fire(_player, _path, true)
-	return Profiles[_player].Data
+	onDataChanged:Fire(player, path, true)
+	return Profiles[player].Data
 end
 
-function ProfileReplication:IncrementDataValueInPath(_player, _path, _value)
-	assert(type(_path) == "string", "Path needs to be a string")
-	assert(_value ~= nil, "Value needs to be different of nil")
-	assert(type(_value) == "number", "Value needs to be a number")
+--[=[
+	@within ProfileService
+	Increment number on path
 
-	if Profiles[_player] == nil then
+	@param player Player -- Target player
+	@param path string -- path to the data
+	@param value number -- number to increment
+]=]
+function ProfileReplication:Increment(player, path, value)
+	assert(type(path) == "string", "Path needs to be a string")
+	assert(value ~= nil, "Value needs to be different of nil")
+	assert(type(value) == "number", "Value needs to be a number")
+
+	if Profiles[player] == nil then
 		return
 	end
 
-	local Folder, Attribute = ProfileReplication:_navigateOnReplicatedDataFolder(_player, _path)
+	local Folder, Attribute = ProfileReplication:_navigateOnReplicatedDataFolder(player, path)
 	local function Increment(parent, key, value)
 
 		assert(type(parent[key]) == "number", "Data value needs to be a number")
 
 		parent[key] += value 
 	end
-	ProfileReplication:_recursiveAction(Profiles[_player].Data, _path, _value, Increment)
-	onDataChanged:Fire(_player, _path, true)     
-	return Profiles[_player].Data
+	ProfileReplication:_recursiveAction(Profiles[player].Data, path, value, Increment)
+	onDataChanged:Fire(player, path, true)     
+	return Profiles[player].Data
 end
 
-function ProfileReplication:DeleteDataValueInPath(_player, _path)
+--[=[
+	@within ProfileService
+	Delete value on path
+
+	@param player Player -- Target player
+	@param path string -- path to the data
+]=]
+function ProfileReplication:Delete(player, path)
 	local function Delete(parent, key, value)
 		if string.match(key, '[0-9]+') ~= nil and string.len(string.match(key, '[0-9]+')) == string.len(key) then
 			table.remove(parent, key)
 		elseif type(key) == "string" then
 			parent[key] = nil
 		end 
-		onDataChanged:Fire(_player, _path, false, key)
+		onDataChanged:Fire(player, path, false, key)
 	end
-	ProfileReplication:_recursiveAction(Profiles[_player].Data, _path, nil, Delete)
+	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Delete)
 
-	return Profiles[_player].Data
+	return Profiles[player].Data
 end
 
-function ProfileReplication:GetPlayerData(_player)
-	if Profiles[_player] ~= nil then
-		return TableUtil.Copy(Profiles[_player].Data)
+--[=[
+	@within ProfileService
+	Return the player profile data
+
+	@param player Player -- Target player
+	@return {any}
+]=]
+function ProfileReplication:GetPlayerData(player: Player)
+	if Profiles[player] ~= nil then
+		return TableUtil.Copy(Profiles[player].Data)
 	end
 end
 
+--[=[
+	@within ProfileService
+	Return the player profile within a Promise
+
+	@param player Player -- Target player
+	@return Promise<ProfileService.Profile>
+]=]
 function ProfileReplication:GetPlayerDataAsync(player)
 	assert(player, "Player object expect, got nil")
 	assert(player:IsA("Player"), "Player object expected, got " .. type(player))
@@ -181,7 +243,14 @@ function ProfileReplication:GetPlayerDataAsync(player)
 	end)
 end
 
-function ProfileReplication:GetPlayerProfileAsync(player)
+--[=[
+	@within ProfileService
+	Return the player profile
+
+	@param player Player -- Target player
+	@return ProfileService.Profile
+]=]
+function ProfileReplication:GetPlayerProfile(player)
 	return Profiles[player]
 end
 
@@ -341,23 +410,26 @@ function ProfileReplication:_arrayToString(arr)
 	return table.concat(arr, ".")
 end
 
-function ProfileReplication:_recursiveAction(datastructure, path, value, action)
+function ProfileReplication:_recursiveAction(datastructure, _path, value, action)
+	local path = _path
 	if typeof(path) == "string" then
 		path = ProfileReplication:_stringToArray(path)
 	end
 	local function travel(parent, subpath)
 		local key = subpath[1]
 		if tonumber(key) and #subpath > 1 then 
-			key = tonumber(key) 
+			key = tonumber(key)
 		end 
 		if #subpath == 1 then
-			action(parent, key, value)
+			return action(parent, key, value)
 		else
-			table.remove(subpath, 1)		
+			table.remove(subpath, 1)
 			if parent[key] ~= nil then
-				travel(parent[key], subpath)
+				return travel(parent[key], subpath)
 			end
 			
+			warn(_path, datastructure)
+			error("Failed to find path on datastructure.")
 			return
 		end
 	end

@@ -1,2 +1,6 @@
 title = "Profile Replication"  # From Git
 gitRepoUrl = "https://github.com/SamuZen/ProfileReplication" # From Git
+
+[docusaurus]
+url = "https://samuzen.github.io"
+baseUrl = "/ProfileReplication"

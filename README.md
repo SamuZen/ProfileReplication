@@ -1,6 +1,6 @@
 # Profile Replication - Documentação
 
-Bem-vindo à documentação do **ProfileReplication**!<br>
+Bem-vindo à documentação do **ProfileReplication**!
 Este é um módulo Roblox que oferece uma maneira simples e eficaz de gerenciar perfis de jogador e replicar dados do servidor com os clients.
 
 ## Funcionalidades Principais

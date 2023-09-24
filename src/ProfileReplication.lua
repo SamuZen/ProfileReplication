@@ -12,6 +12,7 @@ local ProfileService = require(Packages.profileservice)
 local ProfileStore
 local Profiles = {}
 local onDataChanged = Signal.new()
+local profileAdjustmentHandler = nil
 
 --[=[
 	@class ProfileService
@@ -43,8 +44,12 @@ ProfileReplication.Signals = {
 
 	@param databaseName string -- The name of the database
 	@param profileTemplate table -- The data template
+	@param _profileAdjustmentHandler function -- callback to adjust the data before using the loaded data
 ]=]
-function ProfileReplication:init(databaseName: string, profileTemplate: table)
+function ProfileReplication:init(databaseName: string, profileTemplate: table, _profileAdjustmentHandler: (table) -> table)
+	if _profileAdjustmentHandler ~= nil then
+		profileAdjustmentHandler = _profileAdjustmentHandler
+	end
     ProfileStore = ProfileService.GetProfileStore(
         databaseName,
         profileTemplate
@@ -56,16 +61,18 @@ end
 	Start the system, load player profiles, register player added and data changed
 ]=]
 function ProfileReplication:start()
+
+	-- load player profile
+	Players.PlayerAdded:Connect(function(player)
+        self:_loadPlayerProfile(player)
+    end)
 	for _, player in Players:GetPlayers() do
 		task.spawn(function()
 			self:_loadPlayerProfile(player)
 		end)
 	end
 
-	Players.PlayerAdded:Connect(function(player)
-        self:_loadPlayerProfile(player)
-    end)
-
+	-- release player profile
     Players.PlayerRemoving:Connect(function(player)
 		local profile = Profiles[player]
 		if profile ~= nil then
@@ -256,33 +263,36 @@ end
 
 -- ### Private
 
-function ProfileReplication:_loadPlayerProfile(player)
+function ProfileReplication:_loadPlayerProfile(player: Player)
 	local profile = ProfileStore:LoadProfileAsync("Player_" .. player.UserId)
 
+	if profile == nil then
+		player:Kick("Failed to load your data. Try again")
+		return
+	end
 	
-	if profile ~= nil then
-		profile:AddUserId(player.UserId) 
-		profile:Reconcile() 
-		profile:ListenToRelease(function()
-			Profiles[player] = nil
-			player:Kick()
-		end)
+	profile:AddUserId(player.UserId)
+	profile:Reconcile()
+	profile:ListenToRelease(function()
+		Profiles[player] = nil
+		player:Kick("Releasing loaded data!")
+	end)
 
-		if player:IsDescendantOf(game:GetService('Players')) == true then
-			warn("Player profile loaded! ", profile)
-
-			Profiles[player] = profile
-			ProfileReplication:_renderReplicatedFolder(player)
-
-			ProfileReplication.Signals.playerProfileLoaded:Fire(player, profile)
-			return player, profile
-		else
-			profile:Release()
-		end
-	else
-		player:Kick() 
+	if profileAdjustmentHandler ~= nil then
+		profile = profileAdjustmentHandler(profile)
 	end
 
+	if player:IsDescendantOf(game:GetService('Players')) == true then
+		warn("Player profile loaded! ", profile)
+
+		Profiles[player] = profile
+		ProfileReplication:_renderReplicatedFolder(player)
+
+		ProfileReplication.Signals.playerProfileLoaded:Fire(player, profile)
+		return player, profile
+	else
+		profile:Release()
+	end
 
 end
 

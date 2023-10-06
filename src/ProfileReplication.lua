@@ -93,6 +93,20 @@ end
 
 -- ### API
 
+function ProfileReplication:GetPath(player: Player, path)
+	if Profiles[player] then
+		local function g(parent, key, value)
+			warn("GET")
+			warn(parent, key, value)
+		end
+		ProfileReplication:_recursiveAction(Profiles[player].Data, path, 0, g)
+
+		return Profiles[player].Data
+	else
+		warn("Failed to change value on " .. player.DisplayName .. " there is no profile loaded")
+	end
+end
+
 --[=[
 	@within ProfileService
 	Set value on path.

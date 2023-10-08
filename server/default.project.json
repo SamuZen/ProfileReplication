@@ -1,0 +1,6 @@
+{
+  "name": "ProfileReplication",
+  "tree": {
+    "$path": "../src/server"
+  }
+}

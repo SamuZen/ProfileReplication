@@ -1,0 +1,9 @@
+{
+  "name": "ProfileReplication",
+  "tree": {
+    "$path": "../src/client",
+    "Packages": {
+      "$path": "../Packages"
+    }
+  }
+}

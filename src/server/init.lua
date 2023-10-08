@@ -1,5 +1,6 @@
 -- ### Roblox Services
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ### Packages
 local Packages = script.Packages
@@ -11,8 +12,15 @@ local ProfileService = require(Packages.profileservice)
 -- ### Variables
 local ProfileStore
 local Profiles = {}
+local Folders = {}
+
 local onDataChanged = Signal.new()
 local profileAdjustmentHandler = nil
+
+local profilesFolder = Instance.new("Folder")
+profilesFolder.Name = 'profiles'
+profilesFolder.Parent = ReplicatedStorage
+
 
 --[=[
 	@class ProfileService
@@ -35,6 +43,7 @@ ProfileReplication.__index = ProfileReplication
 ]=]
 ProfileReplication.Signals = {
 	playerProfileLoaded = Signal.new(),
+	playerProfileRemoved = Signal.new(),
 	beforePlayerRemoving = Signal.new(),
 }
 
@@ -79,6 +88,8 @@ function ProfileReplication:start()
 			ProfileReplication.Signals.beforePlayerRemoving:Fire(player)
 			profile:Release()
 		end
+		ProfileReplication.Signals.playerProfileRemoved:Fire(player)
+		Folders[player]:Destroy()
     end)
 
 	onDataChanged:Connect(function(_player, _path, _state, _key)
@@ -123,14 +134,12 @@ function ProfileReplication:Set(player: Player, path, newValue)
 			warn(parent, key, value)
 			error("Cannot use 'Set' on a table path.")
 		end
-
 		parent[key] = value
 	end
 	
 	if Profiles[player] then
 		ProfileReplication:_recursiveAction(Profiles[player].Data, path, newValue, ChangeValue)
 		onDataChanged:Fire(player, path, true)
-		return Profiles[player].Data
 	else
 		warn("Failed to change value on " .. player.DisplayName .. " there is no profile loaded")
 	end
@@ -171,7 +180,6 @@ function ProfileReplication:AddTable(player, path, value, key)
 	end
 
 	onDataChanged:Fire(player, path, true)
-	return Profiles[player].Data
 end
 
 --[=[
@@ -300,9 +308,12 @@ function ProfileReplication:_loadPlayerProfile(player: Player)
 		warn("Player profile loaded! ", profile)
 
 		Profiles[player] = profile
-		ProfileReplication:_renderReplicatedFolder(player)
+		local folder = ProfileReplication:_renderReplicatedFolder(player)
+		Folders[player] = folder
 
-		ProfileReplication.Signals.playerProfileLoaded:Fire(player, profile)
+		task.defer(function()
+			ProfileReplication.Signals.playerProfileLoaded:Fire(player, profile, folder)
+		end)
 		return player, profile
 	else
 		profile:Release()
@@ -310,14 +321,14 @@ function ProfileReplication:_loadPlayerProfile(player: Player)
 
 end
 
-function ProfileReplication:_renderReplicatedFolder(player)
+function ProfileReplication:_renderReplicatedFolder(player: Player)
 	assert(player ~= nil, "To create a replicated folder, the argument needs to be a player, got nil")
 	assert(typeof(player) == "Instance", "To create a replicated folder, the argument needs to be a player Instance")
 	assert(player:IsA("Player") , "Argument instance needs to be a 'Player'")
 	assert(Profiles[player], "No profile found with passed player" )
 
 	local ReplicationFolder = Instance.new("Folder")
-	ReplicationFolder.Name = "_replicationFolder"
+	ReplicationFolder.Name = player.UserId
 	local function mapArray(array, folder)
 		for i, j in pairs(array) do
 			if type(j) == "table" then
@@ -331,10 +342,12 @@ function ProfileReplication:_renderReplicatedFolder(player)
 		end
 	end
 	mapArray(Profiles[player].Data, ReplicationFolder)
-	if player:FindFirstChild("_replicationFolder") ~= nil then
-		player["_replicationFolder"]:Destroy()
+
+	if profilesFolder:FindFirstChild(player.UserId) ~= nil then
+		profilesFolder[player.UserId]:Destroy()
 	end
-	ReplicationFolder.Parent = player
+	ReplicationFolder.Parent = profilesFolder
+	return ReplicationFolder
 end
 
 function ProfileReplication:_getDataFromPath(datastructure, path)
@@ -389,7 +402,7 @@ end
 
 function ProfileReplication:_navigateOnReplicatedDataFolder(player, path)
 	local Steps = string.split(path, ".")
-	local ActualStep = player:FindFirstChild("_replicationFolder")
+	local ActualStep = Folders[player]
 	local function TestIfExistFolder(_parent, _seekedName)
 		local folder = _parent:FindFirstChild(_seekedName)
 		if folder then
@@ -399,18 +412,13 @@ function ProfileReplication:_navigateOnReplicatedDataFolder(player, path)
 		end
 	end
 	if ActualStep then
-
 		for i, j in pairs(Steps) do
-
 			if i == #Steps then
-				local attributeTest = ActualStep:GetAttribute(j)
-				if attributeTest ~= nil then
-					return ActualStep, j
+				local resultFolder = TestIfExistFolder(ActualStep, j)
+				if resultFolder ~= 'false' then
+					ActualStep = resultFolder
 				else
-					local result = TestIfExistFolder(ActualStep, j)
-					if result ~= 'false' then
-						ActualStep = result
-					end
+					return ActualStep, j
 				end
 			else
 				local result = TestIfExistFolder(ActualStep, j)

@@ -107,12 +107,28 @@ end
 function ProfileReplication:GetPath(player: Player, path)
 	if Profiles[player] then
 		local function g(parent, key, value)
-			warn("GET")
-			warn(parent, key, value)
+			return parent[key]
 		end
-		ProfileReplication:_recursiveAction(Profiles[player].Data, path, 0, g)
+		return ProfileReplication:_recursiveAction(Profiles[player].Data, path, 'default', g)
+	else
+		warn("Failed to get value on " .. player.DisplayName .. " there is no profile loaded")
+	end
+end
 
-		return Profiles[player].Data
+function ProfileReplication:Append(player: Player, path, newValue, index)
+
+	local function append(parent, key, value)
+		local result = parent[key]
+		if index ~= nil then
+			result[index] = value
+		else
+			table.insert(result, value)
+		end
+	end
+
+	if Profiles[player] then
+		ProfileReplication:_recursiveAction(Profiles[player].Data, path, newValue, append)
+		onDataChanged:Fire(player, path, newValue)
 	else
 		warn("Failed to change value on " .. player.DisplayName .. " there is no profile loaded")
 	end
@@ -218,8 +234,8 @@ end
 	@param player Player -- Target player
 	@param path string -- path to the data
 ]=]
-function ProfileReplication:Delete(player, path)
-	local function Delete(parent, key, value)
+function ProfileReplication:Remove(player, path)
+	local function Remove(parent, key, value)
 		if string.match(key, '[0-9]+') ~= nil and string.len(string.match(key, '[0-9]+')) == string.len(key) then
 			table.remove(parent, key)
 		elseif type(key) == "string" then
@@ -227,10 +243,35 @@ function ProfileReplication:Delete(player, path)
 		end 
 		onDataChanged:Fire(player, path, false, key)
 	end
-	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Delete)
+	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Remove)
 
 	return Profiles[player].Data
 end
+
+function ProfileReplication:Delete(player, path)
+	local function Delete(parent, key, value)
+		if tonumber(key) then
+			parent[tonumber(key)] = nil
+		else
+			parent[key] = nil
+		end
+		onDataChanged:Fire(player, path, false, key)
+	end
+	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Delete)
+	return Profiles[player].Data
+end
+
+function ProfileReplication:DeleteFromTable(player, path, key)
+	local function Delete(parent, key)
+		parent[key] = nil
+		onDataChanged:Fire(player, path, false, key)
+	end
+	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Delete)
+	return Profiles[player].Data
+end
+
+
+-- ### GET
 
 --[=[
 	@within ProfileService

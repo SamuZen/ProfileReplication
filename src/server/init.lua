@@ -324,7 +324,18 @@ function ProfileReplication:GetPlayerProfile(player)
 	return Profiles[player]
 end
 
+function ProfileReplication:getDataFolder(player)
+    self:getProfilesFolder()
+    if Folders[player] ~= nil then return Folders[player] end
+    return self.profilesFolder:WaitForChild(player.UserId)
+end
+
 -- ### Private
+
+function ProfileReplication:_getProfilesFolder()
+    if self.profilesFolder ~= nil then return end
+    self.profilesFolder = ReplicatedStorage:WaitForChild("profiles")
+end
 
 function ProfileReplication:_loadPlayerProfile(player: Player)
 	local profile = ProfileStore:LoadProfileAsync("Player_" .. player.UserId)

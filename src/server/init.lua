@@ -55,7 +55,7 @@ ProfileReplication.Signals = {
 	@param profileTemplate table -- The data template
 	@param _profileAdjustmentHandler function -- callback to adjust the data before using the loaded data
 ]=]
-function ProfileReplication:init(databaseName: string, profileTemplate: table, _profileAdjustmentHandler: (table) -> table)
+function ProfileReplication.Init(databaseName: string, profileTemplate: table, _profileAdjustmentHandler: (table) -> table)
 	if _profileAdjustmentHandler ~= nil then
 		profileAdjustmentHandler = _profileAdjustmentHandler
 	end
@@ -63,21 +63,22 @@ function ProfileReplication:init(databaseName: string, profileTemplate: table, _
         databaseName,
         profileTemplate
     )
+	ProfileReplication.Start()
 end
 
 --[=[
 	@within ProfileService
 	Start the system, load player profiles, register player added and data changed
 ]=]
-function ProfileReplication:start()
+function ProfileReplication.Start()
 
 	-- load player profile
 	Players.PlayerAdded:Connect(function(player)
-        self:_loadPlayerProfile(player)
+        ProfileReplication._loadPlayerProfile(player)
     end)
 	for _, player in Players:GetPlayers() do
 		task.spawn(function()
-			self:_loadPlayerProfile(player)
+			ProfileReplication._loadPlayerProfile(player)
 		end)
 	end
 
@@ -95,27 +96,27 @@ function ProfileReplication:start()
 	onDataChanged:Connect(function(_player, _path, _state, _key)
         --print(_player, _path, _state, _key)
         if _state then
-            ProfileReplication:_createOrUpdateOnReplicatedFolder(_player, _path)
+            ProfileReplication._createOrUpdateOnReplicatedFolder(_player, _path)
         else
-            ProfileReplication:_deleteOnReplicatedFolder(_player, _path, _key)
+            ProfileReplication._deleteOnReplicatedFolder(_player, _path, _key)
         end
     end)
 end
 
 -- ### API
 
-function ProfileReplication:GetPath(player: Player, path)
+function ProfileReplication.GetPath(player: Player, path)
 	if Profiles[player] then
 		local function g(parent, key, value)
 			return parent[key]
 		end
-		return ProfileReplication:_recursiveAction(Profiles[player].Data, path, 'default', g)
+		return ProfileReplication._recursiveAction(Profiles[player].Data, path, 'default', g)
 	else
 		warn("Failed to get value on " .. player.DisplayName .. " there is no profile loaded")
 	end
 end
 
-function ProfileReplication:Append(player: Player, path, newValue, index)
+function ProfileReplication.Append(player: Player, path, newValue, index)
 
 	local function append(parent, key, value)
 		local result = parent[key]
@@ -127,7 +128,7 @@ function ProfileReplication:Append(player: Player, path, newValue, index)
 	end
 
 	if Profiles[player] then
-		ProfileReplication:_recursiveAction(Profiles[player].Data, path, newValue, append)
+		ProfileReplication._recursiveAction(Profiles[player].Data, path, newValue, append)
 		onDataChanged:Fire(player, path, newValue)
 	else
 		warn("Failed to change value on " .. player.DisplayName .. " there is no profile loaded")
@@ -143,7 +144,7 @@ end
 	@param path string -- path to the data
 	@param newValue string | number | boolean -- value to set
 ]=]
-function ProfileReplication:Set(player: Player, path, newValue)
+function ProfileReplication.Set(player: Player, path, newValue)
 	assert(typeof(newValue) ~= "table", "Cannot 'Set' a value with table.")
 	local function ChangeValue(parent, key, value)
 		if typeof(parent[key]) == "table" then
@@ -154,7 +155,7 @@ function ProfileReplication:Set(player: Player, path, newValue)
 	end
 	
 	if Profiles[player] then
-		ProfileReplication:_recursiveAction(Profiles[player].Data, path, newValue, ChangeValue)
+		ProfileReplication._recursiveAction(Profiles[player].Data, path, newValue, ChangeValue)
 		onDataChanged:Fire(player, path, true)
 	else
 		warn("Failed to change value on " .. player.DisplayName .. " there is no profile loaded")
@@ -170,7 +171,7 @@ end
 	@param value table -- table to append
 	@param key string -- optional key to insert the table
 ]=]
-function ProfileReplication:AddTable(player, path, value, key)
+function ProfileReplication.AddTable(player, path, value, key)
 	assert(player ~= nil, "To create a replicated folder, the argument needs to be a player, got nil")
 	assert(typeof(player) == "Instance", "To create a replicated folder, the argument needs to be a player Instance")
 	assert(player:IsA("Player") , "Argument instance needs to be a 'Player'")
@@ -189,9 +190,9 @@ function ProfileReplication:AddTable(player, path, value, key)
 	if key ~= nil then
 		assert(type(key) == "string", "Table key needs to be a string, got " .. type(key))
 
-		ProfileReplication:_recursiveAction(Profiles[player].Data, path, value, AddTableWithKey)
+		ProfileReplication._recursiveAction(Profiles[player].Data, path, value, AddTableWithKey)
 	else
-		ProfileReplication:_recursiveAction(Profiles[player].Data, path, value, AddTable)
+		ProfileReplication._recursiveAction(Profiles[player].Data, path, value, AddTable)
 
 	end
 
@@ -206,7 +207,7 @@ end
 	@param path string -- path to the data
 	@param value number -- number to increment
 ]=]
-function ProfileReplication:Increment(player, path, value)
+function ProfileReplication.Increment(player, path, value)
 	assert(type(path) == "string", "Path needs to be a string")
 	assert(value ~= nil, "Value needs to be different of nil")
 	assert(type(value) == "number", "Value needs to be a number")
@@ -215,14 +216,14 @@ function ProfileReplication:Increment(player, path, value)
 		return
 	end
 
-	local Folder, Attribute = ProfileReplication:_navigateOnReplicatedDataFolder(player, path)
+	local Folder, Attribute = ProfileReplication._navigateOnReplicatedDataFolder(player, path)
 	local function Increment(parent, key, value)
 
 		assert(type(parent[key]) == "number", "Data value needs to be a number")
 
 		parent[key] += value 
 	end
-	ProfileReplication:_recursiveAction(Profiles[player].Data, path, value, Increment)
+	ProfileReplication._recursiveAction(Profiles[player].Data, path, value, Increment)
 	onDataChanged:Fire(player, path, true)     
 	return Profiles[player].Data
 end
@@ -234,7 +235,7 @@ end
 	@param player Player -- Target player
 	@param path string -- path to the data
 ]=]
-function ProfileReplication:Remove(player, path)
+function ProfileReplication.Remove(player, path)
 	local function Remove(parent, key, value)
 		if string.match(key, '[0-9]+') ~= nil and string.len(string.match(key, '[0-9]+')) == string.len(key) then
 			table.remove(parent, key)
@@ -243,12 +244,12 @@ function ProfileReplication:Remove(player, path)
 		end 
 		onDataChanged:Fire(player, path, false, key)
 	end
-	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Remove)
+	ProfileReplication._recursiveAction(Profiles[player].Data, path, nil, Remove)
 
 	return Profiles[player].Data
 end
 
-function ProfileReplication:Delete(player, path)
+function ProfileReplication.Delete(player, path)
 	local function Delete(parent, key, value)
 		if tonumber(key) then
 			parent[tonumber(key)] = nil
@@ -257,16 +258,16 @@ function ProfileReplication:Delete(player, path)
 		end
 		onDataChanged:Fire(player, path, false, key)
 	end
-	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Delete)
+	ProfileReplication._recursiveAction(Profiles[player].Data, path, nil, Delete)
 	return Profiles[player].Data
 end
 
-function ProfileReplication:DeleteFromTable(player, path, key)
+function ProfileReplication.DeleteFromTable(player, path, key)
 	local function Delete(parent, key)
 		parent[key] = nil
 		onDataChanged:Fire(player, path, false, key)
 	end
-	ProfileReplication:_recursiveAction(Profiles[player].Data, path, nil, Delete)
+	ProfileReplication._recursiveAction(Profiles[player].Data, path, nil, Delete)
 	return Profiles[player].Data
 end
 
@@ -280,7 +281,7 @@ end
 	@param player Player -- Target player
 	@return {any}
 ]=]
-function ProfileReplication:GetPlayerData(player: Player)
+function ProfileReplication.GetPlayerData(player: Player)
 	if Profiles[player] ~= nil then
 		return TableUtil.Copy(Profiles[player].Data)
 	end
@@ -293,7 +294,7 @@ end
 	@param player Player -- Target player
 	@return Promise<ProfileService.Profile>
 ]=]
-function ProfileReplication:GetPlayerDataAsync(player)
+function ProfileReplication.GetPlayerDataAsync(player)
 	assert(player, "Player object expect, got nil")
 	assert(player:IsA("Player"), "Player object expected, got " .. type(player))
 
@@ -320,24 +321,24 @@ end
 	@param player Player -- Target player
 	@return ProfileService.Profile
 ]=]
-function ProfileReplication:GetPlayerProfile(player)
+function ProfileReplication.GetPlayerProfile(player)
 	return Profiles[player]
 end
 
-function ProfileReplication:getDataFolder(player)
-    self:getProfilesFolder()
+function ProfileReplication.getDataFolder(player)
+    ProfileReplication.getProfilesFolder()
     if Folders[player] ~= nil then return Folders[player] end
     return self.profilesFolder:WaitForChild(player.UserId)
 end
 
 -- ### Private
 
-function ProfileReplication:_getProfilesFolder()
+function ProfileReplication._getProfilesFolder()
     if self.profilesFolder ~= nil then return end
     self.profilesFolder = ReplicatedStorage:WaitForChild("profiles")
 end
 
-function ProfileReplication:_loadPlayerProfile(player: Player)
+function ProfileReplication._loadPlayerProfile(player: Player)
 	local profile = ProfileStore:LoadProfileAsync("Player_" .. player.UserId)
 
 	if profile == nil then
@@ -360,7 +361,7 @@ function ProfileReplication:_loadPlayerProfile(player: Player)
 		warn("Player profile loaded! ", profile)
 
 		Profiles[player] = profile
-		local folder = ProfileReplication:_renderReplicatedFolder(player)
+		local folder = ProfileReplication._renderReplicatedFolder(player)
 		Folders[player] = folder
 
 		task.defer(function()
@@ -373,7 +374,7 @@ function ProfileReplication:_loadPlayerProfile(player: Player)
 
 end
 
-function ProfileReplication:_renderReplicatedFolder(player: Player)
+function ProfileReplication._renderReplicatedFolder(player: Player)
 	assert(player ~= nil, "To create a replicated folder, the argument needs to be a player, got nil")
 	assert(typeof(player) == "Instance", "To create a replicated folder, the argument needs to be a player Instance")
 	assert(player:IsA("Player") , "Argument instance needs to be a 'Player'")
@@ -402,10 +403,10 @@ function ProfileReplication:_renderReplicatedFolder(player: Player)
 	return ReplicationFolder
 end
 
-function ProfileReplication:_getDataFromPath(datastructure, path)
+function ProfileReplication._getDataFromPath(datastructure, path)
 
 	if typeof(path) == "string" then
-		path = ProfileReplication:_stringToArray(path)
+		path = ProfileReplication._stringToArray(path)
 	end
 	local function travel(parent, subpath)
 		local key = subpath[1]
@@ -428,7 +429,7 @@ function ProfileReplication:_getDataFromPath(datastructure, path)
 	return travel(datastructure, path)
 end
 
-function ProfileReplication:_createOrUpdateOnReplicatedFolder(_player, _path)
+function ProfileReplication._createOrUpdateOnReplicatedFolder(_player, _path)
 	local function SetFolderData(_data, _folder)
 		for i, j in pairs(_data) do
 			if type(j) ~= "table" then
@@ -443,8 +444,8 @@ function ProfileReplication:_createOrUpdateOnReplicatedFolder(_player, _path)
 			end 
 		end
 	end
-	local Folder, AttributeName = ProfileReplication:_navigateOnReplicatedDataFolder(_player, _path)
-	local data = ProfileReplication:_getDataFromPath(Profiles[_player].Data, _path)
+	local Folder, AttributeName = ProfileReplication._navigateOnReplicatedDataFolder(_player, _path)
+	local data = ProfileReplication._getDataFromPath(Profiles[_player].Data, _path)
 	if AttributeName then
 		Folder:SetAttribute(AttributeName, data)
 	else
@@ -452,7 +453,7 @@ function ProfileReplication:_createOrUpdateOnReplicatedFolder(_player, _path)
 	end
 end
 
-function ProfileReplication:_navigateOnReplicatedDataFolder(player, path)
+function ProfileReplication._navigateOnReplicatedDataFolder(player, path)
 	local Steps = string.split(path, ".")
 	local ActualStep = Folders[player]
 	local function TestIfExistFolder(_parent, _seekedName)
@@ -484,20 +485,20 @@ function ProfileReplication:_navigateOnReplicatedDataFolder(player, path)
 	return ActualStep, nil
 end
 
-function ProfileReplication:_stringToArray(str)
+function ProfileReplication._stringToArray(str)
 	local arr = {}
 	for s in string.gmatch(str, "[^.]+") do arr[#arr+1] = s end
 	return arr
 end
 
-function ProfileReplication:_arrayToString(arr)
+function ProfileReplication._arrayToString(arr)
 	return table.concat(arr, ".")
 end
 
-function ProfileReplication:_recursiveAction(datastructure, _path, value, action)
+function ProfileReplication._recursiveAction(datastructure, _path, value, action)
 	local path = _path
 	if typeof(path) == "string" then
-		path = ProfileReplication:_stringToArray(path)
+		path = ProfileReplication._stringToArray(path)
 	end
 	local function travel(parent, subpath)
 		local key = subpath[1]
@@ -520,9 +521,9 @@ function ProfileReplication:_recursiveAction(datastructure, _path, value, action
 	return travel(datastructure, path)
 end
 
-function ProfileReplication:_deleteOnReplicatedFolder(_player, _path, key)
+function ProfileReplication._deleteOnReplicatedFolder(_player, _path, key)
 
-	local Folder, AttributeName = ProfileReplication:_navigateOnReplicatedDataFolder(_player, _path)
+	local Folder, AttributeName = ProfileReplication._navigateOnReplicatedDataFolder(_player, _path)
 	local folderParent = Folder.Parent
 
 	if AttributeName then

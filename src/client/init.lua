@@ -24,133 +24,60 @@ local Players = game:GetService("Players")
 -- ### Packages
 local Packages = script.Packages
 local Signal = require(Packages.signal)
-local Promise = require(Packages.promise)
 
 export type Class = {
-    dataFolderAdded: () -> any, -- is a Promise
-    getDataFolder: () -> Folder,
-    -- callbacks
-    onPlayerDataAdded:(callback: (player: Player, folder: Folder) -> nil) -> RBXScriptSignal,
-    onPlayerDataRemoved:(callback: (player: Player, folder: Folder) -> nil) -> RBXScriptSignal,
-    onLocalDataAdded:(callback: (folder: Folder) -> nil) -> RBXScriptSignal,
+    Start: () -> any,
 }
 
 export type PrivateClass = {
-    profilesFolder: Folder,
-    playerToFolder: {[Player]: Folder},
-    signals: {
-        playerDataAdded: Signal,
-        playerDataRemoved: Signal,
-        otherPlayerDataAdded: Signal,
-        otherPlayerDataRemoved: Signal,
-        localDataAdded: Signal,
-    },
+    PlayerFolderAdded: (Folder) -> nil,
+    PlayerFolderRemoved: (Folder) -> nil,
 }
 
 local ProfileReplication: Class | PrivateClass = {}
-ProfileReplication.__index = ProfileReplication
 
-function ProfileReplication.new()
-    local self = setmetatable({}, ProfileReplication)
+ProfileReplication.ProfilesFolder = nil
+ProfileReplication.PlayerToFolder = {}
+ProfileReplication.MyDataFolder = nil
 
-    self.signals = {
-        playerDataAdded = Signal.new() :: Signal,
-        playerDataRemoved = Signal.new() :: Signal,
-        localDataAdded = Signal.new() :: Signal,
-    }
-    self.profilesFolder = nil
-    self.playerToFolder = {}
-    return self
-end
+ProfileReplication.Signals = {
+    PlayerDataAdded = Signal.new() :: Signal,
+    PlayerDataRemoved = Signal.new() :: Signal,
+    LocalDataAdded = Signal.new() :: Signal,
+}
 
-function ProfileReplication:init()
-    
-end
+function ProfileReplication.Start()
+    ProfileReplication.ProfilesFolder = ReplicatedStorage:WaitForChild("profiles")
 
-function ProfileReplication:start()
-    self:getProfilesFolder()
-
-    for _, folder in self.profilesFolder:GetChildren() do
-        self:playerFolderAdded(folder)
+    for _, folder in ProfileReplication.ProfilesFolder:GetChildren() do
+        ProfileReplication.PlayerFolderAdded(folder)
     end
-    self.profilesFolder.ChildAdded:Connect(function(child)
-        self:playerFolderAdded(child)
+    ProfileReplication.ProfilesFolder.ChildAdded:Connect(function(child)
+        ProfileReplication.PlayerFolderAdded(child)
+    end)
+    ProfileReplication.ProfilesFolder.ChildRemoved:Connect(function(child)
+        ProfileReplication.PlayerFolderRemoved(child)
     end)
 
-    self.profilesFolder.ChildRemoved:Connect(function(child)
-        self:playerFolderRemoved(child)
-    end)
+    ProfileReplication.MyDataFolder = ProfileReplication.ProfilesFolder:WaitForChild(Players.LocalPlayer.UserId)
 end
 
-function ProfileReplication:playerFolderAdded(folder: Folder)
+function ProfileReplication.PlayerFolderAdded(folder: Folder)
     local player = Players:GetPlayerByUserId(folder.Name)
     if player == nil then return end
 
-    self.playerToFolder[player] = folder
-
-    if player == Players.LocalPlayer then
-        self.signals.localDataAdded:Fire(folder)
-    end
-    self.signals.playerDataAdded:Fire(player, folder)
+    ProfileReplication.PlayerToFolder[player] = folder
+    ProfileReplication.Signals.PlayerDataAdded:Fire(player, folder)
 end
 
-function ProfileReplication:playerFolderRemoved(folder: Folder)
+function ProfileReplication.PlayerFolderRemoved(folder: Folder)
     local player = Players:GetPlayerByUserId(folder.Name)
     if player == nil then
         warn('data removed but player is nill')
         return
     end
-    self.playerToFolder[player] = nil
-    self.signals.playerDataRemoved:Fire(folder)
+    ProfileReplication.PlayerToFolder[player] = nil
+    ProfileReplication.Signals.PlayerDataRemoved:Fire(folder)
 end
 
-function ProfileReplication:getProfilesFolder()
-    if self.profilesFolder ~= nil then return end
-    self.profilesFolder = ReplicatedStorage:WaitForChild("profiles")
-end
-
---- ### API
-
-function ProfileReplication:dataFolderAdded()
-    self:getProfilesFolder()
-    if self.playerToFolder[Players.LocalPlayer] ~= nil then
-        warn("1")
-        return Promise.resolve()
-    end
-
-    return Promise.new(function(resolve, reject, onCancel)
-        warn('2')
-        local connection
-        connection = self:onLocalDataAdded(function(folder)
-            warn('3')
-            connection:Disconnect()
-            resolve(folder)
-        end)
-    end)
-end
-
-function ProfileReplication:getDataFolder()
-    self:getProfilesFolder()
-    if self.playerToFolder[Players.LocalPlayer] ~= nil then return self.playerToFolder[Players.LocalPlayer] end
-    return self.profilesFolder:WaitForChild(Players.LocalPlayer.UserId)
-end
-
-function ProfileReplication:onPlayerDataFolderAdded(callback: (player: Player, folder: Folder) -> nil): RBXScriptConnection
-    return self.signals.playerDataAdded:Connect(function(player, folder)
-        callback(player, folder)
-    end)
-end
-
-function ProfileReplication:onPlayerDataFolderRemoved(callback: (player: Players, folder: Folder) -> nil): RBXScriptConnection
-    return self.signals.playerDataRemoved:Connect(function(player, folder)
-        callback(player, folder)
-    end)
-end
-
-function ProfileReplication:onLocalDataAdded(callback: (folder: Folder) -> nil): RBXScriptConnection
-    return self.signals.localDataAdded:Connect(function(folder)
-        callback(folder)
-    end)
-end
-
-return ProfileReplication.new() :: Class
+return ProfileReplication :: Class
